@@ -199,3 +199,14 @@ def test_a_crash_in_one_run_is_the_candidates_failure(setup):
 def test_too_few_gpus_is_not_the_candidates_failure(setup):
     with pytest.raises(probe.InfraError, match="at least 6 H100s"):
         setup(runs(3.2770), gpus=4)
+
+
+def test_one_far_run_is_set_aside_but_two_are_kept():
+    # backout-target-5's runs: one at 3.2900 among seven near 3.278 asked for +67 steps with it in
+    five = [3.2822, 3.2798, 3.2756, 3.2900, 3.2769, 3.2777, 3.2798, 3.2776]
+    r = target.verdict(five, 2370, 0.0617)
+    assert r["runs"] == 8 and "3.2900" in r["run_losses"] and "left out" in r["caveats"]
+    assert r["val_loss_sd"] < 0.002 and abs(r["recommended_cut"]) < 30  # not +67
+    two = five[:3] + [3.2900, 3.2905] + five[5:]
+    r2 = target.verdict(two, 2370, 0.0617)
+    assert "unstable" in r2["caveats"] and r2["val_loss_sd"] > 0.002

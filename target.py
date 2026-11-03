@@ -72,6 +72,10 @@ SIGMA_PRIOR_DF = 24
 # val_loss cost of cutting one step near 2380 steps: 5.9e-5 ± 1.8e-5 on 8×H100 (5.7e-5 from 1-GPU full runs).
 SLOPE = 5.9e-5
 SLOPE_SE = 1.8e-5
+# A run this far from the others' median (5 run SDs) is set aside when it is the only one: about 1 run in 200 of this
+# record family lands that far out, and one such run would otherwise set the SD and the step advice for all eight
+# (backout-target-5: one run at 3.2900 among seven near 3.278 asked for +67 steps; full-run-1gpu then said -92).
+OUTLIER = 5 * SIGMA_PRIOR
 BIAS = 0.0002  # 1-GPU minus 8×H100 final val_loss, mean over 24 pairs: subtracted before predicting
 SIMS = 20000
 SEED = 1234  # fixed, so the same runs always give the same verdict
@@ -156,6 +160,11 @@ def required_mean(sd: float) -> float:
 
 def verdict(losses: list[float], num_iterations: int | None, s_per_step_8gpu: float | None) -> dict:
     """The eval's result from the runs' final val losses."""
+    all_losses = losses
+    med = sorted(losses)[len(losses) // 2]
+    far = [x for x in losses if abs(x - med) > OUTLIER]
+    if len(far) == 1:
+        losses = [x for x in losses if x not in far]
     pr = Predictor(losses)
     chance = pr.chance(0)
     cut = pr.best_cut()
@@ -170,6 +179,13 @@ def verdict(losses: list[float], num_iterations: int | None, s_per_step_8gpu: fl
             f"to pass {PASS_GOAL:.0%} of the time.")
     measured = (f"{len(losses)} whole runs of the candidate (one H100 each, the benchmark's math) averaged val_loss "
                 f"{pr.mean + BIAS:.4f} ± {pr.se:.4f} (SE; runs: {', '.join(f'{x:.4f}' for x in losses)}).")
+    if len(far) == 1:
+        measured += (f" One more run finished at {far[0]:.4f}, more than {OUTLIER:.4f} from the others' median, and is left "
+                     "out of this prediction: about 1 run in 200 lands that far out. The benchmark can draw one too, which "
+                     "this chance doesn't include.")
+    elif far:
+        measured += (f" {len(far)} runs finished more than {OUTLIER:.4f} from the median ({', '.join(f'{x:.4f}' for x in far)}): "
+                     "the candidate's training is unstable, which the benchmark will see too.")
     lever = (f"Each step cut costs about {SLOPE:.1e} val_loss here (±{SLOPE_SE:.0e}), measured on this record's "
              "runs near 2380 steps.")
     check = (lambda k: "Before committing, measure the new count during the turn with speedrun-probe's full-run-1gpu "
@@ -206,7 +222,7 @@ def verdict(losses: list[float], num_iterations: int | None, s_per_step_8gpu: fl
     out = {"problems": sum(1 for g in gates if g["blocking"] and not g["passed"]),
            "critique": critique + ([caveats] if critique else []), "gates": gates, "caveats": caveats,
            "val_loss": round(pr.mean + BIAS, 5), "val_loss_se": round(pr.se, 5), "val_loss_sd": round(pr.sd, 5),
-           "runs": len(losses), "run_losses": ", ".join(f"{x:.4f}" for x in losses),
+           "runs": len(all_losses), "run_losses": ", ".join(f"{x:.4f}" for x in all_losses),
            "pass_chance": round(chance, 4), "margin": round(TARGET - pr.mean, 5), "required_mean": round(req, 5),
            "recommended_cut": cut, "recommended_cut_se": round(cut_se, 1)}
     if warnings:
