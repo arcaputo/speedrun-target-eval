@@ -29,13 +29,13 @@ CFG = tomllib.loads((EVAL / "eval.toml").read_text())["eval"]
 
 # ---------------------------------------------------------------- eval.toml
 
-def test_eval_toml_is_a_qa_eval_with_a_gate_proc():
+def test_eval_toml_is_a_qa_eval_without_procs():
+    # in-turn measuring is speedrun-probe's full-run-1gpu experiment with repeats; this is the after-turn check
     assert (CFG["type"], CFG["evaluator"], CFG["entrypoint"]) == ("qa", "deterministic", "python target.py")
     assert CFG["pass"]["condition"] == "problems == 0" and CFG["qa"]["qa_cap"] >= 1
-    gate = CFG["procs"]["target"]
-    assert gate["class"] == "gate" and gate["stages"] == target.STAGES
+    assert "procs" not in CFG
     job = tomllib.loads((EVAL / "job.toml").read_text())
-    assert gate["max_wall_s"] <= job["timeout_s"] <= 3600
+    assert job["timeout_s"] <= 3600
     assert job["resources"]["accelerators"] == "H100:8"
 
 

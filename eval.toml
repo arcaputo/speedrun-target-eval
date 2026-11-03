@@ -9,13 +9,10 @@ qa_cap = 3
 [eval.pass]
 condition = "problems == 0"
 
-# A gate proc: the agent may run this eval on its working tree during its turn (Kupanga's self-check). It measures
-# the candidate only: the target is absolute (3.28), so no parent is needed.
-[eval.procs.target]
-class = "gate"
-max_wall_s = 3300
-stages = ["downloading data", "compiling candidate", "training candidate", "validating candidate",
-          "predicting the benchmark"]
+# No gate proc: during the turn the agent measures the same thing with speedrun-probe's full-run-1gpu experiment
+# (repeats = 4, a num_iterations parameter, a cached parent baseline, the turn clock paused), which reports
+# num_iterations_for_target by the same rule. This eval is the check after the turn, whose critique is the next
+# turn's prompt: the one path by which a candidate that will miss the target goes back to the agent.
 
 [eval.schema.problems]
 type = "int"

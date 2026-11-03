@@ -1,6 +1,9 @@
 """speedrun-target: will the benchmark count this candidate's time, and how many steps does its loss margin pay for?
 
-A Kupanga QA eval with a gate proc. It runs the candidate's whole training run once on each H100 of an 8×H100
+A Kupanga QA eval, run after the agent's turn: its critique is the next turn's prompt. During the turn the agent
+measures the same thing with speedrun-probe's full-run-1gpu experiment proc (repeats, a num_iterations parameter, a
+parent baseline), which reports num_iterations_for_target by the same rule; QA jobs get no repeats, so this eval
+runs its 8 copies itself. It runs the candidate's whole training run once on each H100 of an 8×H100
 machine, in parallel. One GPU takes 8 gradient-accumulation micro-steps per step, the same math as 8×H100: over 24
 paired runs its final val_loss was unbiased against the benchmark's (+0.0002, SD 0.0016), so these are 8 draws of
 the benchmark's own loss.
@@ -169,6 +172,9 @@ def verdict(losses: list[float], num_iterations: int | None, s_per_step_8gpu: fl
                 f"{pr.mean + BIAS:.4f} ± {pr.se:.4f} (SE; runs: {', '.join(f'{x:.4f}' for x in losses)}).")
     lever = (f"Each step cut costs about {SLOPE:.1e} val_loss here (±{SLOPE_SE:.0e}), measured on this record's "
              "runs near 2380 steps.")
+    check = (lambda k: "Before committing, measure the new count during the turn with speedrun-probe's full-run-1gpu "
+             f"(num_iterations = {num_iterations - k if num_iterations is not None else 'the new count'}, repeats = 4: "
+             "about ±13 steps; its num_iterations_for_target uses this rule). One run can't resolve it.")
     gates, critique, warnings = [], [], []
     ok_chance = chance >= PASS_GOAL
     gates.append({"name": "target_chance", "kind": "gate", "blocking": True, "passed": ok_chance,
@@ -179,8 +185,7 @@ def verdict(losses: list[float], num_iterations: int | None, s_per_step_8gpu: fl
                if cut > -SEARCH else f"no step count within {SEARCH} steps reaches {PASS_GOAL:.0%}")
         critique.append(f"[FAIL] target_chance: predicted chance the benchmark counts this candidate's time is "
                         f"{chance:.0%} (needs ≥ {PASS_GOAL:.0%}). {measured} {rule} {lever} Change the step count "
-                        f"{fix}, or make the change itself reach a lower loss at the same steps. Then run this gate "
-                        "again: one seed can't resolve this, 8 can.")
+                        f"{fix}, or make the change itself reach a lower loss at the same steps. {check(cut)}")
     ok_unspent = cut < UNSPENT_STEPS
     gates.append({"name": "unspent_margin", "kind": "gate", "blocking": True, "passed": ok_unspent,
                   "value": cut, "required": UNSPENT_STEPS, "unit": "steps",
@@ -189,8 +194,8 @@ def verdict(losses: list[float], num_iterations: int | None, s_per_step_8gpu: fl
         critique.append(f"[FAIL] unspent_margin: the loss margin pays for cutting about {cut} steps (±{cut_se:.0f}) "
                         f"and still passing {PASS_GOAL:.0%} of the time: {where(cut)}{sec(cut, 'faster')}. The "
                         f"speedrun scores time, so margin left under the target is time not taken. {measured} "
-                        f"{rule} {lever} Spend it (fewer steps, or anything else that is faster at the same loss), "
-                        "then run this gate again.")
+                        f"{rule} {lever} Spend it (fewer steps, or anything else that is faster at the same loss). "
+                        f"{check(cut)}")
     elif ok_chance and cut >= UNSPENT_STEPS // 2:
         warnings.append(f"unspent_margin: about {cut} steps (±{cut_se:.0f}) of loss margin are unspent ({where(cut)} "
                         f"would still pass {PASS_GOAL:.0%} of the time{sec(cut, 'faster')}).")

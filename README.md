@@ -44,9 +44,16 @@ A crash, divergence or unfinished run is the candidate's failure, with its first
 the candidate's makes the run broken: fewer than 6 H100s, a download failure, or fewer than 6 runs finishing for
 the machine's reasons.
 
-It has a gate proc (`[eval.procs.target]`), so the agent can run it on its working tree during its turn as part of
-its self-check. The gate takes about 35 minutes. A turn is about 55 minutes and gates don't pause the clock, so the
-agent has to start it early.
+It has no gate proc. During its turn the agent measures the same thing with speedrun-probe's `full-run-1gpu`
+experiment, which Kupanga's procs already make the right tool for it:
+- `repeats = 4` parallel copies, with the platform averaging outputs and dividing their noise by √n;
+- a `num_iterations` parameter, so a step count is tried without editing code;
+- a cached parent baseline, and the turn clock paused while it runs.
+
+Its `num_iterations_for_target` applies this eval's rule to the mean loss. A gate proc here would rerun the whole
+8-GPU eval with no parameter, count against the self-checks, and duplicate what repeats already do. This eval is the
+check after the turn. Its critique is the next turn's prompt, which is the one path by which a candidate that will
+miss the target goes back to the agent. QA jobs get no repeats, so it runs its 8 copies itself.
 
 ## Files
 

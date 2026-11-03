@@ -74,6 +74,7 @@ SAVE_DIR = os.environ.get("SPEEDRUN_PROBE_SAVE_DIR")
 #   step:{step}/{train_steps} val_loss:{val_loss:.4f} train_time:{training_time_ms:.0f}ms ...  (validation)
 TRAIN_STEP = re.compile(r"^step:(\d+)/(\d+) train_time:(\d+)ms", re.M)
 VAL_STEP = re.compile(r"^step:(\d+)/(\d+) val_loss:(-?[\d.]+|nan|-?inf) train_time:(\d+)ms", re.M)
+PROGRESS_EVERY = 10  # every this many training steps, and every validation, is echoed for inspect(id, "progress")
 SEED_NOTE = ("train_gpt.py seeds nothing itself, so both codes start from torch's default seed, but GPU kernels "
              "aren't bit-deterministic")
 
@@ -83,6 +84,18 @@ NL = "\n"
 
 class InfraError(Exception):
     """A failure that isn't the candidate's: the probe ends with no result."""
+
+
+def echo_progress(label: str, text: str, done: int) -> int:
+    """Print the run's step lines past the first `done` complete lines, prefixed with its label (every
+    PROGRESS_EVERY-th training step and each validation), so eval.toml's progress_regex sees them in the job's
+    output; returns the complete lines looked at."""
+    lines = text.split(NL)[:-1]  # the last is still being written
+    for line in lines[done:]:
+        m = TRAIN_STEP.match(line)
+        if VAL_STEP.match(line) or (m and int(m.group(1)) % PROGRESS_EVERY == 0):
+            print(f"{label} {line[:200]}", flush=True)
+    return len(lines)
 
 
 def stage(name: str) -> None:
@@ -323,9 +336,11 @@ def run(code: Path, data: Path, cache: Path, label: str, timeout: float, done: C
                              stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
         stage(f"compiling {label}")
         training = validating = False
+        echoed = 0  # complete lines of the run's output looked at so far
         while True:
             time.sleep(1)
             text = out.read_text(errors="replace")
+            echoed = echo_progress(label, text, echoed)
             lines = train_lines(text)
             if lines and not training:
                 training = True
@@ -381,14 +396,23 @@ def loss_caveats(steps: int) -> str:
             "communication or optimizer sharding, so it isn't the benchmark's step time.")
 
 
+# The benchmark (speedrun-8xh100) passes 80% of the time when its 8 runs average about 3.2779 (SD 0.0015, one-sided
+# t-test p < 0.01 against 3.28); a step cut near 2380 steps costs about 5.9e-5 val_loss; one H100's final loss runs
+# 0.0002 above 8×H100's. From 216 + 72 8×H100 runs and 24 paired probes (notes/evals-v2/hypotheses.md).
+GOAL_LOSS = 3.2779
+LOSS_PER_STEP = 5.9e-5
+ONE_GPU_BIAS = 0.0002
+
 FULL_CAVEATS = (f"One H100 and one seed ({SEED_NOTE}), so the final val loss can differ by a few thousandths from "
                 "another run of the same code. train_time is one GPU with 8-way gradient accumulation, about 8× the "
                 "benchmark's and without its communication: compare it only with other 1-GPU numbers. "
                 "Run-to-run SD is 0.0015, and cutting a step costs about 5.9e-5 val_loss near 2380 steps, so one run "
                 "can't place a step count to better than about ±25 steps. The benchmark counts the time only if 8 runs "
                 "average below 3.28 with p < 0.01, about 3.2784 or lower (3.2779 to pass 80% of the time); "
-                "margin_to_target is 3.28 minus this run's loss. To choose a step count, use the speedrun-target gate, "
-                "which runs 8 seeds and says which num_iterations passes.")
+                "margin_to_target is 3.28 minus this run's loss, and num_iterations_for_target the step count at which "
+                "the benchmark would pass 80% of the time if this loss were the mean. Both are linear in the loss, so "
+                "the mean over repeats is the answer for the mean loss: ask for repeats = 4 (about ±13 steps), and "
+                "again at the new step count to confirm.")
 
 
 def loss_result(parent: dict, cand: dict | None, steps: int) -> dict:
@@ -423,6 +447,9 @@ def full_result(text: str, num_iterations: int | None) -> dict:
     if math.isfinite(loss):
         out["val_loss"] = round(loss, 4)
         out["margin_to_target"] = round(bench.TARGET - loss, 4)
+        if num_iterations is not None:
+            out["num_iterations_for_target"] = round(
+                num_iterations + (loss - ONE_GPU_BIAS - GOAL_LOSS) / LOSS_PER_STEP, 1)
     else:
         out["critique"] = [f"The final val loss is {loss}: training diverged."]
     try:
