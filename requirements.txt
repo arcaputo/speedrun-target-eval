@@ -1,0 +1,21 @@
+# The speedrun's pinned stack: torch 2.10 from the cu128 wheel index (nightlies have produced NaNs in
+# reproductions). The subject's train_gpt.py runs in this environment; its FA3 kernel comes from the
+# Hugging Face hub through `kernels` at import time. kernels 0.13.0 (April 2026), not the 0.16.1 #92 pins: from
+# 0.14 kernels refuses kernels from accounts that aren't trusted Hugging Face organizations, and from 0.15 it
+# requires a version= or revision= on every get_kernel. Records up to #86 call
+# get_kernel('varunneal/flash-attention-3') with neither, from a personal account, so they can't load on 0.16.1.
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.10.0+cu128
+# CUDA headers for the NVRTC kernels the subject compiles at import (python:3.12 has no CUDA toolkit);
+# bench.py merges their include folders into CUDA_HOME. Same CUDA 12.8 as torch's own runtime wheel.
+nvidia-cuda-runtime-cu12==12.8.90
+nvidia-cuda-nvcc-cu12==12.8.93
+nvidia-cuda-cccl-cu12==12.8.90
+numpy
+tqdm
+huggingface-hub==1.29.0
+kernels==0.13.0
+setuptools
+typing-extensions==4.15.0
+tiktoken
+scipy

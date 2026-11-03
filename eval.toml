@@ -1,0 +1,107 @@
+[eval]
+type = "qa"
+evaluator = "deterministic"
+entrypoint = "python target.py"
+
+[eval.qa]
+qa_cap = 3
+
+[eval.pass]
+condition = "problems == 0"
+
+# A gate proc: the agent may run this eval on its working tree during its turn (Kupanga's self-check). It measures
+# the candidate only: the target is absolute (3.28), so no parent is needed.
+[eval.procs.target]
+class = "gate"
+max_wall_s = 3300
+stages = ["downloading data", "compiling candidate", "training candidate", "validating candidate",
+          "predicting the benchmark"]
+
+[eval.schema.problems]
+type = "int"
+description = "Blocking gates failed: target_chance (predicted chance the benchmark counts the time is below 0.8), unspent_margin (the loss margin pays for cutting 30 or more steps), or the candidate crashed, diverged or didn't finish"
+
+[eval.schema.critique]
+type = "list[str]"
+description = "One line per failed gate with the 8 runs' losses, the benchmark's rule, the predicted chance and the num_iterations that would pass 80% of the time; sent to the agent when a gate fails"
+
+[eval.schema.warnings]
+type = "list[str]"
+optional = true
+description = "Non-blocking: 15–29 steps of loss margin unspent"
+
+[eval.schema.caveats]
+type = "string"
+optional = true
+description = "The prediction in one line, and what it doesn't cover"
+
+[eval.schema.val_loss]
+type = "float"
+optional = true
+display = "{:.4f}"
+description = "Mean final val_loss of the candidate's whole runs, one H100 each (unbiased against 8×H100 to within 0.0002)"
+
+[eval.schema.val_loss_se]
+type = "float"
+optional = true
+display = "{:.4f}"
+description = "Standard error of val_loss (run SD pooled with the record family's 0.0015)"
+
+[eval.schema.val_loss_sd]
+type = "float"
+optional = true
+display = "{:.4f}"
+description = "Run-to-run SD used for the prediction (the runs' own, pooled with 0.0015 as 24 runs' worth)"
+
+[eval.schema.runs]
+type = "int"
+description = "Whole runs that finished with a final val_loss"
+
+[eval.schema.run_losses]
+type = "string"
+optional = true
+description = "Each run's final val_loss"
+
+[eval.schema.pass_chance]
+type = "float"
+optional = true
+display = "{:.2f}"
+description = "Predicted chance speedrun-8xh100 counts the time: 8 runs with mean below 3.28 at one-sided p < 0.01 (higher is better)"
+
+[eval.schema.margin]
+type = "float"
+optional = true
+display = "{:+.4f}"
+description = "3.28 minus the predicted 8×H100 mean val_loss (positive: under the target)"
+
+[eval.schema.required_mean]
+type = "float"
+optional = true
+display = "{:.4f}"
+description = "The mean val_loss at which 8 runs with this SD just reach p = 0.01"
+
+[eval.schema.recommended_cut]
+type = "int"
+optional = true
+description = "Most steps that can be cut and still pass 80% of the time (negative: steps to add)"
+
+[eval.schema.recommended_cut_se]
+type = "float"
+optional = true
+display = "{:.0f}"
+description = "Rough standard error of recommended_cut, steps"
+
+[eval.schema.num_iterations]
+type = "int"
+optional = true
+description = "The candidate's num_iterations"
+
+[eval.schema.recommended_num_iterations]
+type = "int"
+optional = true
+description = "num_iterations at which the predicted chance is 0.8"
+
+[eval.schema.wall_s]
+type = "float"
+display = "{:.0f}"
+description = "Eval wall time, seconds"

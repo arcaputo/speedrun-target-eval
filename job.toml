@@ -1,0 +1,17 @@
+# The same environment as speedrun-8xh100, speedrun-perf and speedrun-probe (python:3.12, their requirements.txt,
+# CUDA headers from pip wheels). 8 whole runs at once, one per H100: about 650 s of setup and compile plus ~0.55 s a
+# step, ~33 min at 2380 steps (speedrun-probe's full-run-1gpu, README "Cost and time"); 8 compiles at once share the
+# CPUs, hence the margin.
+image = "python:3.12"
+requirements = "requirements.txt"
+timeout_s = 3300
+# A preempted spot run starts over from scratch; SkyPilot may recover it up to this many times.
+max_retries = 3
+
+[resources]
+cpus = "32+"
+memory = "256+"
+# 8×H100 on GCP is a3-highgpu-8g. The runs don't talk to each other, so NVLink isn't needed, but it's the
+# 8-GPU H100 machine SkyPilot finds.
+accelerators = "H100:8"
+use_spot = true
